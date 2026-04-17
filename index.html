@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CG Report - Horizontal Scroll Enabled</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body { font-family: 'Arial', sans-serif; padding: 0; background: #fff; margin: 0; color: #000; }
+        .setup-box { background: #fff; padding: 15px; border: 1px solid #000; margin: 15px; border-radius: 4px; }
+        
+        /* स्लाइडिंग के लिए मुख्य कंटेनर */
+        #pdf-content { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+        /* हर पेज पर 2 छात्र का ब्लॉक */
+        .student-page-block {
+            width: 1400px; /* फिक्स चौड़ाई ताकि वेबपेज पर टेबल दबे नहीं */
+            height: 4.9in;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 5px 20px;
+            box-sizing: border-box;
+            page-break-inside: avoid;
+        }
+
+        /* PDF जनरेट करते समय चौड़ाई को वापस ऑटो करना */
+        @media print {
+            .student-page-block { width: 100%; }
+        }
+
+        .student-page-block:nth-child(2n) {
+            page-break-after: always;
+        }
+
+        table { border-collapse: collapse; width: 100%; border: 0.8px solid #000; table-layout: fixed; background: #fff; }
+        th, td { border: 0.5px solid #000; padding: 2px 0; text-align: center; font-size: 12px; font-weight: bold; height: 24px; color: #000; }
+        
+        .subject-col { 
+            width: 130px; 
+            text-align: left; 
+            padding-left: 10px; 
+            font-size: 13px; 
+            white-space: nowrap; 
+        }
+        
+        .header-row th { font-size: 10px; padding: 3px 0; }
+        .student-info-header { text-align: left; margin-bottom: 5px; font-size: 16px; color: #000; padding: 2px 5px; border-bottom: 2px solid #000; width: fit-content; }
+
+        .edit-input { width: 95%; border: none; background: transparent; text-align: center; font-size: 12px; font-weight: bold; color: #000; outline: none; }
+        .btn { padding: 10px 20px; font-size: 14px; cursor: pointer; border: 1px solid #000; background: #fff; font-weight: bold; margin: 5px; }
+
+        /* स्क्रॉल बार को सुंदर बनाने के लिए */
+        #pdf-content::-webkit-scrollbar { height: 8px; }
+        #pdf-content::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        #pdf-content::-webkit-scrollbar-track { background: #f1f1f1; }
+
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+
+<div id="setup-container" class="setup-box no-print">
+    <h2 style="margin-top:0;">प्रगति पत्रक</h2>
+    <label>छात्रों की संख्या: </label>
+    <input type="number" id="student-count" min="1" value="2" style="width: 60px; padding: 5px; font-size: 16px; border: 1px solid #000;">
+    <button class="btn" onclick="createStudentList()">लिस्ट तैयार करें</button>
+    <div id="list-area" style="margin-top:15px;"></div>
+    <div id="action-area" style="display:none; text-align: center; margin-top: 20px;">
+        <button class="btn" onclick="generateAllResults()">1. रिजल्ट देखें</button>
+        <button id="pdf-btn" class="btn" style="display:none;" onclick="downloadPDF()">2. PDF डाउनलोड करें (A3)</button>
+    </div>
+</div>
+
+<div id="pdf-content">
+    <div id="all-results-container"></div>
+</div>
+
+<script>
+const subjects = ["हिन्दी", "अंग्रेजी", "संस्कृत/उर्दू", "गणित", "विज्ञान", "सा. विज्ञान", "कला शिक्षा", "शारीरिक शि.", "व्यावसायिक"];
+
+function getGrade(score, total) {
+    let p = (score / total) * 100;
+    if (p >= 91) return "A+"; if (p >= 81) return "A"; if (p >= 71) return "B+";
+    if (p >= 61) return "B"; if (p >= 51) return "C+"; if (p >= 41) return "C";
+    if (p >= 33) return "D"; return "E";
+}
+
+function createStudentList() {
+    const count = document.getElementById('student-count').value;
+    let html = `<table style="width:auto; min-width:400px; border:1px solid #000;"><tr><th>Roll</th><th>Name</th><th>Target %</th></tr>`;
+    for(let i=1; i<=count; i++) {
+        html += `<tr><td><input type="number" id="roll-${i}" value="${i}" style="width:40px; border:none; text-align:center;"></td><td><input type="text" id="name-${i}" placeholder="नाम" style="width:180px; border:none;"></td><td><input type="number" id="tper-${i}" value="75" style="width:50px; border:none; text-align:center;"></td></tr>`;
+    }
+    document.getElementById('list-area').innerHTML = html + `</table>`;
+    document.getElementById('action-area').style.display = 'block';
+}
+
+function updateCalculations(sIdx) {
+    let sectionTotals = Array(28).fill(0);
+    subjects.forEach((_, j) => {
+        const getV = (id) => parseFloat(document.getElementById(`${id}-${sIdx}-${j}`).value) || 0;
+        const setT = (id, val) => { document.getElementById(`${id}-${sIdx}-${j}`).innerText = val; };
+
+        let tl = getV('tl'), tp = getV('tp'), ty = tl + tp;
+        setT('ty', ty); setT('tg', getGrade(ty, 100));
+        let al = getV('al'), ap = getV('ap'), ay = al + ap;
+        setT('ay', ay); setT('ag', getGrade(ay, 100));
+        let wl = getV('wl'), wp = getV('wp'), wy = wl + wp;
+        setT('wy', wy); setT('wg', getGrade(wy, 100));
+
+        let adtl = Number((tl * 0.2).toFixed(1)), adtp = Number((tp * 0.2).toFixed(1)), adty = Number((adtl + adtp).toFixed(1));
+        setT('adtl', adtl); setT('adtp', adtp); setT('adty', adty); setT('adtg', getGrade(adty, 20));
+        let adal = Number((al * 0.2).toFixed(1)), adap = Number((ap * 0.2).toFixed(1)), aday = Number((adal + adap).toFixed(1));
+        setT('adal', adal); setT('adap', adap); setT('aday', aday); setT('adag', getGrade(aday, 20));
+        let adwl = Number((wl * 0.6).toFixed(1)), adwp = Number((wp * 0.6).toFixed(1)), adwy = Number((adwl + adwp).toFixed(1));
+        setT('adwl', adwl); setT('adwp', adwp); setT('adwy', adwy); setT('adwg', getGrade(adwy, 60));
+
+        let fl = Number((adtl + adal + adwl).toFixed(1)), fp = Number((adtp + adap + adwp).toFixed(1)), fy = Number((fl + fp).toFixed(1));
+        setT('fl', fl); setT('fp', fp); setT('fy', fy); setT('fg', getGrade(fy, 100));
+
+        let row = [tl,tp,ty,0, al,ap,ay,0, wl,wp,wy,0, adtl,adtp,adty,0, adal,adap,aday,0, adwl,adwp,adwy,0, fl,fp,fy,0];
+        row.forEach((v, idx) => sectionTotals[idx] += v);
+    });
+
+    const bases = [900, 900, 900, 180, 180, 540, 900];
+    for(let k=0; k<28; k++) {
+        let footerCell = document.getElementById(`f-tot-${sIdx}-${k}`);
+        if((k+1)%4 !== 0) {
+            footerCell.innerText = Math.round(sectionTotals[k]);
+        } else {
+            let sectionIdx = Math.floor(k/4);
+            footerCell.innerText = getGrade(sectionTotals[k-1], bases[sectionIdx]);
+        }
+    }
+    for(let m=0; m<7; m++) {
+        let sum = sectionTotals[(m*4)+2];
+        document.getElementById(`f-per-${sIdx}-${m}`).innerText = ((sum/bases[m])*100).toFixed(1) + "%";
+    }
+}
+
+function generateAllResults() {
+    const count = document.getElementById('student-count').value;
+    const container = document.getElementById('all-results-container');
+    container.innerHTML = ""; 
+
+    for(let i=1; i<=count; i++) {
+        const roll = document.getElementById(`roll-${i}`).value;
+        const name = document.getElementById(`name-${i}`).value || "N/A";
+        const target = parseFloat(document.getElementById(`tper-${i}`).value) || 75;
+
+        let tableHtml = `<div class="student-page-block">
+            <div class="student-info-header">Roll: ${roll} | Name: ${name}</div>
+            <table>
+                <tr class="header-row">
+                    <th rowspan="2" class="subject-col">विषय</th>
+                    <th colspan="4">त्रैमासिक</th><th colspan="4">अर्द्धवार्षिक</th><th colspan="4">वार्षिक</th>
+                    <th colspan="4">20% त्रै.</th><th colspan="4">20% अर्द्ध.</th><th colspan="4">60% वार्.</th><th colspan="4">कुल अधिभार</th>
+                </tr>
+                <tr class="header-row">${Array(7).fill('<th>लि.</th><th>प्र.</th><th>योग</th><th>ग्र.</th>').join('')}</tr>`;
+
+        subjects.forEach((sub, j) => {
+            const rv = () => Math.max(0, Math.min(1, (target/100) + (Math.random()*0.1-0.05)));
+            let tl=Math.round(80*rv()), tp=Math.round(20*rv()), al=Math.round(80*rv()), ap=Math.round(20*rv()), wl=Math.round(80*rv()), wp=Math.round(20*rv());
+            const input = (pre, val) => `<td><input type="number" class="edit-input" id="${pre}-${i}-${j}" value="${val}" onchange="updateCalculations(${i})"></td>`;
+            const span = (pre) => `<td id="${pre}-${i}-${j}">-</td>`;
+            tableHtml += `<tr><td class="subject-col">${sub}</td>${input('tl',tl)}${input('tp',tp)}${span('ty')}${span('tg')}${input('al',al)}${input('ap',ap)}${span('ay')}${span('ag')}${input('wl',wl)}${input('wp',wp)}${span('wy')}${span('wg')}${span('adtl')}${span('adtp')}${span('adty')}${span('adtg')}${span('adal')}${span('adap')}${span('aday')}${span('adag')}${span('adwl')}${span('adwp')}${span('adwy')}${span('adwg')}${span('fl')}${span('fp')}${span('fy')}${span('fg')}</tr>`;
+        });
+
+        tableHtml += `<tr class="total-row"><td class="subject-col">कुल योग</td>`;
+        for(let k=0; k<28; k++) tableHtml += `<td id="f-tot-${i}-${k}">-</td>`;
+        
+        tableHtml += `</tr><tr class="total-row"><td class="subject-col">प्रतिशत</td>`;
+        for(let m=0; m<7; m++) tableHtml += `<td colspan="4" id="f-per-${i}-${m}">-</td>`;
+        
+        tableHtml += `</tr></table></div>`;
+        container.innerHTML += tableHtml;
+        setTimeout(() => updateCalculations(i), 50);
+    }
+    document.getElementById('pdf-btn').style.display = 'inline-block';
+}
+
+function downloadPDF() {
+    const element = document.getElementById('pdf-content');
+    html2pdf().set({
+        margin: [0.1, 0.1],
+        filename: 'CG_Final_Scroll_Report.pdf',
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'a3', orientation: 'landscape' }
+    }).from(element).save();
+}
+</script>
+</body>
+</html>
